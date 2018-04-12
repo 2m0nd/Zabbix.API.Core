@@ -1,7 +1,8 @@
 ﻿using Newtonsoft.Json;
 using System;
 using System.Dynamic;
-using System.Net.Http;
+using System.IO;
+using System.Net;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -14,10 +15,10 @@ namespace ZabbixAPICore
         private string apiURL;
         private string auth;
         private string basicAuthentication;
-        private static HttpClient _client = new HttpClient();
-
+        
         public Zabbix(string user, string password, string apiURL, bool useBasicAuthorization = false)
         {
+            
             if (!Uri.IsWellFormedUriString(apiURL, UriKind.Absolute))
             {
                 throw new UriFormatException();
@@ -68,14 +69,31 @@ namespace ZabbixAPICore
             return response;
         }
 
-        private async Task<string> SendRequestAsync(string jsonParams)
+        private Task<string> SendRequestAsync(string jsonParams)
         {
-            if (basicAuthentication != null) _client.DefaultRequestHeaders.Add("Authorization", "Basic " + basicAuthentication);
+            return Task.Run(() =>
+            {
+                var request = WebRequest.Create(apiURL);
+                request.Method = "POST";
+                request.Headers.Add("Authorization", $"Basic {basicAuthentication}");
+                request.ContentType = "application/json; charset=UTF-8";
 
-            var clientResponse = await _client.PostAsync(apiURL, new StringContent(jsonParams, Encoding.UTF8, "application/json"));
-            string jsonResponse = await clientResponse.Content.ReadAsStringAsync();
+                var postBytes = Encoding.UTF8.GetBytes(jsonParams);
+                request.ContentLength = postBytes.Length;
+                
+                var requestStream = request.GetRequestStream();
+                requestStream.Write(postBytes, 0, postBytes.Length);
+                requestStream.Close();
 
-            return jsonResponse;
+                var response = (HttpWebResponse) request.GetResponse();
+                string result;
+                using (var rdr = new StreamReader(response.GetResponseStream()))
+                {
+                    result = rdr.ReadToEnd();
+                }
+
+                return result;
+            });
         }
     }
 }
